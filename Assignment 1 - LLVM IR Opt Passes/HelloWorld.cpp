@@ -1,20 +1,21 @@
 //===-- HelloWorld.cpp - Example Transformations --------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+//
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-
+//===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Utils/HelloWorld.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/DominanceFrontier.h"
-#include "llvm/Analysis/Dominators.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
-#include "llvm/IR/Instructions.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/PatternMatch.h"
@@ -24,9 +25,9 @@ using namespace llvm;
 
 namespace {
 
-
+//===----------------------------------------------------------------------===//
 // Dead Code Elimination
-
+//===----------------------------------------------------------------------===//
 
 static bool runDCE(Function &F) {
   bool Changed = false;
@@ -65,9 +66,9 @@ static bool runDCE(Function &F) {
   return Changed;
 }
 
-
+//===----------------------------------------------------------------------===//
 // Common Subexpression Elimination
-
+//===----------------------------------------------------------------------===//
 
 static bool runCSE(Function &F, FunctionAnalysisManager &AM) {
   bool Changed = false;
@@ -95,9 +96,9 @@ static bool runCSE(Function &F, FunctionAnalysisManager &AM) {
 
       Instruction *Identical = nullptr;
 
-    
+      //----------------------------------------------------------------------//
       // Local CSE
-    
+      //----------------------------------------------------------------------//
 
       for (Instruction *Previous : LocalSeen) {
         if (I.isIdenticalTo(Previous)) {
@@ -117,9 +118,9 @@ static bool runCSE(Function &F, FunctionAnalysisManager &AM) {
         continue;
       }
 
-    
+      //----------------------------------------------------------------------//
       // Global CSE
-    
+      //----------------------------------------------------------------------//
 
       for (Instruction *Previous : Seen) {
 
@@ -166,9 +167,9 @@ static bool runCSE(Function &F, FunctionAnalysisManager &AM) {
   return Changed;
 }
 
-
+//===----------------------------------------------------------------------===//
 // Strength Reduction + Constant Folding
-
+//===----------------------------------------------------------------------===//
 
 static bool runStrengthReductionAndConstantFolding(Function &F) {
   bool Changed = false;
@@ -183,20 +184,26 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
 
       auto *Op = dyn_cast<BinaryOperator>(&I);
 
+      if (!Op)
+        continue;
+
       Value *Left = Op->getOperand(0);
       Value *Right = Op->getOperand(1);
 
-
+      //======================================================================//
       // Multiplication
-
+      //======================================================================//
 
       if (Op->getOpcode() == Instruction::Mul) {
 
         ConstantInt *LC = dyn_cast<ConstantInt>(Left);
         ConstantInt *RC = dyn_cast<ConstantInt>(Right);
 
+        //----------------------------------------------------------------------//
         // Constant Folding
-        //     5 * 10 -> 50
+        //
+        // 5 * 10 -> 50
+        //----------------------------------------------------------------------//
 
         if (LC && RC) {
 
@@ -204,7 +211,9 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
           int64_t RValue = RC->getSExtValue();
 
           Value *Result =
-              ConstantInt::get(Op->getType(), LValue * RValue);
+              ConstantInt::get(
+                  Op->getType(),
+                  LValue * RValue);
 
           errs() << "[CF] "
                  << LValue << " * " << RValue
@@ -217,7 +226,9 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
           continue;
         }
 
+        //----------------------------------------------------------------------//
         // x * 1 -> x
+        //----------------------------------------------------------------------//
 
         if (LC && LC->getSExtValue() == 1) {
 
@@ -230,6 +241,10 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
           continue;
         }
 
+        //----------------------------------------------------------------------//
+        // x * 1 -> x
+        //----------------------------------------------------------------------//
+
         if (RC && RC->getSExtValue() == 1) {
 
           errs() << "[SR] x * 1 -> x\n";
@@ -241,20 +256,22 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
           continue;
         }
 
+        //----------------------------------------------------------------------//
         // x * power_of_two -> x << log2(power_of_two)
+        //----------------------------------------------------------------------//
 
         ConstantInt *Power = LC ? LC : RC;
         Value *Variable = LC ? Right : Left;
 
         if (Power) {
 
-          int64_t Value = Power->getSExtValue();
+          int64_t ConstantValue = Power->getSExtValue();
 
-          if (Value > 0 &&
-              (Value & (Value - 1)) == 0) {
+          if (ConstantValue > 0 &&
+              (ConstantValue & (ConstantValue - 1)) == 0) {
 
             unsigned ShiftAmount = 0;
-            int64_t Temp = Value;
+            int64_t Temp = ConstantValue;
 
             while (Temp != 1) {
               Temp >>= 1;
@@ -263,7 +280,9 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
 
             IRBuilder<> Builder(Op);
 
-            Value *Shift =
+            // Use a uniquely named local variable so that its
+            // scope is unambiguous.
+            Value *ShiftResult =
                 Builder.CreateShl(
                     Variable,
                     ConstantInt::get(
@@ -271,10 +290,10 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
                         ShiftAmount));
 
             errs() << "[SR] "
-                   << Value << " * x -> x << "
+                   << ConstantValue << " * x -> x << "
                    << ShiftAmount << "\n";
 
-            Op->replaceAllUsesWith(Shift);
+            Op->replaceAllUsesWith(ShiftResult);
             ToDelete.push_back(Op);
 
             Changed = true;
@@ -283,16 +302,19 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
         }
       }
 
-
+      //======================================================================//
       // Addition
-
+      //======================================================================//
 
       if (Op->getOpcode() == Instruction::Add) {
 
         ConstantInt *LC = dyn_cast<ConstantInt>(Left);
         ConstantInt *RC = dyn_cast<ConstantInt>(Right);
 
-        // Constant folding
+        //----------------------------------------------------------------------//
+        // Constant Folding
+        //----------------------------------------------------------------------//
+
         if (LC && RC) {
 
           int64_t LValue = LC->getSExtValue();
@@ -314,7 +336,10 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
           continue;
         }
 
+        //----------------------------------------------------------------------//
         // 0 + x -> x
+        //----------------------------------------------------------------------//
+
         if (LC && LC->getSExtValue() == 0) {
 
           errs() << "[SR] 0 + x -> x\n";
@@ -326,7 +351,10 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
           continue;
         }
 
+        //----------------------------------------------------------------------//
         // x + 0 -> x
+        //----------------------------------------------------------------------//
+
         if (RC && RC->getSExtValue() == 0) {
 
           errs() << "[SR] x + 0 -> x\n";
@@ -339,16 +367,19 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
         }
       }
 
-
+      //======================================================================//
       // Subtraction
-
+      //======================================================================//
 
       if (Op->getOpcode() == Instruction::Sub) {
 
         ConstantInt *LC = dyn_cast<ConstantInt>(Left);
         ConstantInt *RC = dyn_cast<ConstantInt>(Right);
 
-        // Constant folding
+        //----------------------------------------------------------------------//
+        // Constant Folding
+        //----------------------------------------------------------------------//
+
         if (LC && RC) {
 
           int64_t LValue = LC->getSExtValue();
@@ -370,7 +401,10 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
           continue;
         }
 
+        //----------------------------------------------------------------------//
         // x - 0 -> x
+        //----------------------------------------------------------------------//
+
         if (RC && RC->getSExtValue() == 0) {
 
           errs() << "[SR] x - 0 -> x\n";
@@ -383,9 +417,9 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
         }
       }
 
-
+      //======================================================================//
       // Division
-
+      //======================================================================//
 
       if (Op->getOpcode() == Instruction::SDiv ||
           Op->getOpcode() == Instruction::UDiv) {
@@ -393,7 +427,10 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
         ConstantInt *LC = dyn_cast<ConstantInt>(Left);
         ConstantInt *RC = dyn_cast<ConstantInt>(Right);
 
-        // Constant folding
+        //----------------------------------------------------------------------//
+        // Constant Folding
+        //----------------------------------------------------------------------//
+
         if (LC && RC) {
 
           int64_t LValue = LC->getSExtValue();
@@ -419,7 +456,10 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
           }
         }
 
+        //----------------------------------------------------------------------//
         // x / 1 -> x
+        //----------------------------------------------------------------------//
+
         if (RC && RC->getSExtValue() == 1) {
 
           errs() << "[SR] x / 1 -> x\n";
@@ -431,16 +471,22 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
           continue;
         }
 
+        //----------------------------------------------------------------------//
         // x / power_of_two -> x >> log2(power_of_two)
-        if (RC) {
+        //
+        // Keep this transformation only for signed division.
+        // For unsigned division, a simple logical shift is required instead.
+        //----------------------------------------------------------------------//
 
-          int64_t Value = RC->getSExtValue();
+        if (Op->getOpcode() == Instruction::SDiv && RC) {
 
-          if (Value > 0 &&
-              (Value & (Value - 1)) == 0) {
+          int64_t ConstantValue = RC->getSExtValue();
+
+          if (ConstantValue > 0 &&
+              (ConstantValue & (ConstantValue - 1)) == 0) {
 
             unsigned ShiftAmount = 0;
-            int64_t Temp = Value;
+            int64_t Temp = ConstantValue;
 
             while (Temp != 1) {
               Temp >>= 1;
@@ -449,7 +495,7 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
 
             IRBuilder<> Builder(Op);
 
-            Value *Shift =
+            Value *ShiftResult =
                 Builder.CreateAShr(
                     Left,
                     ConstantInt::get(
@@ -457,11 +503,11 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
                         ShiftAmount));
 
             errs() << "[SR] x / "
-                   << Value
+                   << ConstantValue
                    << " -> x >> "
                    << ShiftAmount << "\n";
 
-            Op->replaceAllUsesWith(Shift);
+            Op->replaceAllUsesWith(ShiftResult);
             ToDelete.push_back(Op);
 
             Changed = true;
@@ -472,6 +518,7 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
     }
   }
 
+  // Erase instructions only after all transformations are complete.
   for (Instruction *I : ToDelete)
     I->eraseFromParent();
 
@@ -480,13 +527,14 @@ static bool runStrengthReductionAndConstantFolding(Function &F) {
 
 } // anonymous namespace
 
-
+//===----------------------------------------------------------------------===//
 // HelloWorldPass
-
+//===----------------------------------------------------------------------===//
 
 PreservedAnalyses
-HelloWorldPass::run(Function &F,
-                    FunctionAnalysisManager &AM) {
+HelloWorldPass::run(
+    Function &F,
+    FunctionAnalysisManager &AM) {
 
   errs() << "\n";
   errs() << "========================================\n";
@@ -496,28 +544,28 @@ HelloWorldPass::run(Function &F,
 
   bool Changed = false;
 
-
+  //----------------------------------------------------------------------//
   // 1. Strength Reduction + Constant Folding
+  //----------------------------------------------------------------------//
 
+  Changed |=
+      runStrengthReductionAndConstantFolding(F);
 
-  Changed |= runStrengthReductionAndConstantFolding(F);
-
-
+  //----------------------------------------------------------------------//
   // 2. Common Subexpression Elimination
+  //----------------------------------------------------------------------//
 
+  Changed |=
+      runCSE(F, AM);
 
-  Changed |= runCSE(F, AM);
-
-
+  //----------------------------------------------------------------------//
   // 3. Dead Code Elimination
+  //----------------------------------------------------------------------//
 
-
-  Changed |= runDCE(F);
-
+  Changed |=
+      runDCE(F);
 
   // Repeat DCE once more because CSE/SR/CF can create dead code.
-
-
   if (Changed)
     Changed |= runDCE(F);
 
