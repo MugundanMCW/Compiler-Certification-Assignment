@@ -1,0 +1,117 @@
+
+C:\source\llvm-project\build\bin>opt.exe -passes="helloworld" test.ll -S -o optimized.ll
+
+========================================
+Running custom optimization passes on: test_constant_folding
+========================================
+[CF] 10 + 20 -> 30
+[CF] 30 * 4 -> 120
+Finished custom optimization passes on: test_constant_folding
+
+
+========================================
+Running custom optimization passes on: test_mul_one
+========================================
+[SR] x * 1 -> x
+Finished custom optimization passes on: test_mul_one
+
+
+========================================
+Running custom optimization passes on: test_mul_power_of_two
+========================================
+[SR] 8 * x -> x << 3
+Finished custom optimization passes on: test_mul_power_of_two
+
+
+========================================
+Running custom optimization passes on: test_add_zero
+========================================
+[SR] x + 0 -> x
+Finished custom optimization passes on: test_add_zero
+
+
+========================================
+Running custom optimization passes on: test_sub_zero
+========================================
+[SR] x - 0 -> x
+Finished custom optimization passes on: test_sub_zero
+
+
+========================================
+Running custom optimization passes on: test_div_one
+========================================
+[SR] x / 1 -> x
+Finished custom optimization passes on: test_div_one
+
+
+========================================
+Running custom optimization passes on: test_div_power_of_two
+========================================
+[SR] x / 8 -> x >> 3
+Finished custom optimization passes on: test_div_power_of_two
+
+
+========================================
+Running custom optimization passes on: test_cse
+========================================
+[CSE] Local common subexpression:   %b = add i32 %x, %y
+Finished custom optimization passes on: test_cse
+
+
+========================================
+Running custom optimization passes on: test_cse_mul
+========================================
+[CSE] Local common subexpression:   %b = mul i32 %x, %y
+Finished custom optimization passes on: test_cse_mul
+
+
+========================================
+Running custom optimization passes on: test_dce
+========================================
+[DCE] Removing:   %unused = add i32 %x, 100
+Finished custom optimization passes on: test_dce
+
+
+========================================
+Running custom optimization passes on: test_constant_and_dce
+========================================
+[CF] 100 + 200 -> 300
+Finished custom optimization passes on: test_constant_and_dce
+
+
+========================================
+Running custom optimization passes on: test_combined
+========================================
+[SR] 8 * x -> x << 3
+[SR] x + 0 -> x
+[SR] 8 * x -> x << 3
+[CF] 100 + 200 -> 300
+[CSE] Local common subexpression:   %1 = shl i32 %x, 3
+Finished custom optimization passes on: test_combined
+
+
+========================================
+Running custom optimization passes on: test_multiple_constant_folding
+========================================
+[CF] 10 + 20 -> 30
+[CF] 30 * 4 -> 120
+[CF] 120 - 20 -> 100
+Finished custom optimization passes on: test_multiple_constant_folding
+
+
+========================================
+Running custom optimization passes on: test_multiple_strength_reductions
+========================================
+[SR] 4 * x -> x << 2
+[SR] x + 0 -> x
+[SR] x - 0 -> x
+Finished custom optimization passes on: test_multiple_strength_reductions
+
+
+========================================
+Running custom optimization passes on: test_cse_and_strength_reduction
+========================================
+[SR] 16 * x -> x << 4
+[SR] 16 * x -> x << 4
+[CSE] Local common subexpression:   %1 = shl i32 %x, 4
+Finished custom optimization passes on: test_cse_and_strength_reduction
